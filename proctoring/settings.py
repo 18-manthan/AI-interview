@@ -102,17 +102,28 @@ ASGI_APPLICATION = "proctoring.asgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'proctoringdb2',  # Replace with your database name
+#         'USER': 'root',  # Replace with your PostgreSQL username
+#         'PASSWORD': 'root',  # Replace with your PostgreSQL password
+#         'HOST': 'localhost',  # Set the hostname or IP address of your PostgreSQL server
+#         # 'HOST': 'db',
+#         # 'PORT': '5432',  # Set the PostgreSQL port
+#     }
+# }
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'proctoringdb2',  # Replace with your database name
-        'USER': 'root',  # Replace with your PostgreSQL username
-        'PASSWORD': 'root',  # Replace with your PostgreSQL password
-        # 'HOST': 'localhost',  # Set the hostname or IP address of your PostgreSQL server
-        'HOST': 'db',
-        # 'PORT': '5432',  # Set the PostgreSQL port
+        'NAME': 'proctoringdb2',
+        'USER': 'cis',
+        'PASSWORD': 'cis',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
 
 # LOGGING = {
 #     'version': 1,
