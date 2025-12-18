@@ -1,0 +1,979 @@
+{% extends 'layout.html' %}
+{% block title %} Exam {% endblock %}
+{% load static %}
+{% block scrlink %} 
+<script>
+	var intervalId;
+	var interval
+	var timeoutId
+	var prev_response = 'Nothing';
+	var choosen_options
+	var test_array;
+	var question_size;
+	var needSummary = 1;
+</script>
+
+<!-- web streams API polyfill to support Firefox -->
+<script src="https://unpkg.com/@mattiasbuelens/web-streams-polyfill/dist/polyfill.min.js"></script>
+
+<!-- ../libs/DBML.js to fix video seeking issues -->
+<script src="https://www.webrtc-experiment.com/EBML.js"></script>
+
+<!-- for Edge/FF/Chrome/Opera/etc. getUserMedia support -->
+<script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+<script src="https://www.webrtc-experiment.com/DetectRTC.js"> </script>
+
+<!-- video element -->
+<link href="https://www.webrtc-experiment.com/getHTMLMediaElement.css" rel="stylesheet">
+<script src="https://www.webrtc-experiment.com/getHTMLMediaElement.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
+
+<!-- Include Prism.js for syntax highlighting -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+{% endblock %}
+{% block body %}  
+
+
+<div class="modal fade" id="CameraModal" tabindex="-1" aria-labelledby="cameraModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header" style="display: flex;flex-direction: column;">
+			<h5 class="modal-title pb-1" id="cameraModalLabel">Hello, we need to verify your face</h5>
+			<div style="display: flex; flex-direction: column;font-size: small;color: rgb(58, 58, 58);">
+				<span><i class="fas fa-lightbulb" style="color: #FFD43B;"></i> Please sit straight.</span>
+				<span><i class="fas fa-lightbulb" style="color: #FFD43B;"></i> Align yourself in the center of the
+				  frame.</span>
+				<span><i class="fas fa-lightbulb" style="color: #FFD43B;"></i> Ensure your background is plain.</span>
+			</div>
+			<a class="nav-link active" aria-current="page" href='{% url "imageai:home" %}'>			
+				<button type="button" style="position: absolute;right: 10px;margin-top: -105px;" class="close" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+			</a>
+        </div>
+        <div class="modal-body pt-0">
+          <div class="container" >
+            <video id="cameraFeed"  autoplay style="width: 100%; height: auto;"></video>
+            <canvas id="photoCanvas" style="display: none; "></canvas>
+            <img id="capturedPhoto" style="display: none;margin-bottom:10px;width: 100%; height: auto;">
+          </div>
+          <button type="button" id="verify_face" class="btn btn-primary" style="width: 10rem; margin: 10px 0 0 13px">Verify</button>
+          <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+        </div>
+      </div>
+    </div>
+</div>
+
+<!-- Modal for final submission confirmation -->
+<div class="modal fade" id="staticBackdrop" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+	<div class="modal-dialog">
+	  <div class="modal-content">
+		<div class="modal-header">
+		  <h5 class="modal-title" id="staticBackdropLabel">Confirm Submission</h5>
+		  <button type="button" class="btn-close close" data-bs-dismiss="modal" aria-label="Close">&times;</button>
+		</div>
+		<div class="modal-body">
+		  <p>Do you want to submit ?</p>
+		  <p> Total Question: <span id="tQuestion"></span> </p>
+		  <p> Attempted Question: <span id="aQuestion"></span> </p>
+		  <p> Questions to review: <span id="rQuestion"></span> </p>
+		</div>
+		<div class="modal-footer">
+		  <button type="submit" id="submit_exam_recoder" class="btn btn-primary rounded submit start_rec">Submit</button>
+		</div>
+	  </div>
+	</div>
+  </div>
+
+<div id="overlay" style="display: none;"></div>
+    
+<!-- Message displayed during the freeze -->
+
+
+<div style="padding-top: 5.2rem;">
+	<video id="camera-feed" autoplay style="float: right;" width="320" height="240"></video>
+	<div id="buttonContainer" style="position: absolute; width: 320px; right: 0; top: 34%; padding: 3px; margin-top: 53px; float: right; display: none;">
+		<h3> Summary </h3>
+		<div id="questionSummary"></div>
+	</div>
+</div>
+<br>
+<br>
+<style>
+	.accordion {
+		display: flex;
+    	width: 100%;
+    	align-items: center;
+    	justify-content: center;
+    	color: black;
+    	height: 50px;
+		border-bottom: 2px solid black;
+	}
+
+	.panel {
+		color: black;
+	}
+
+	.instruction-points{
+    	list-style-position: inside;
+    	margin-left: 15px;
+		padding-top: 10px;
+	}
+
+	#start-camera {
+		width: 500px;
+    	display: block;
+    	margin-left: 280px;
+    	margin-top: 10px;
+	}
+
+	.instruction-points>li {
+		display: block;
+		margin-left: 100px;
+	}
+
+	.panel {
+    	padding: 30px 0;
+    	border-radius: 20px;
+	}
+
+	#section2 {
+		display: none;
+	}
+
+	code {
+		background-color: azure;
+		display: block;
+		/* margin-left: 20px; */
+	}
+</style>
+
+<section id="section1" class="ftco-section" style="display: none; margin-top: 5rem; ">
+	<div class="container" style="width: 50%; background-color: #b4b0b021;">
+		<div class="accordion"> INSTRUCTIONS </div>
+		<div class="justify-content-center panel">
+			<ul class="instruction-points">
+				<li> 01. Select a quiet, distraction-free environment. </li>
+				<li> 02. Guarantee a plain background in your webcam view. </li>
+				<li> 03. Ensure both stable internet and a functional webcam throughout the entire exam. </li>
+				<li> 04. Uphold the integrity standards of the examination for optimal results. </li>
+				<li> 05. Confirm that you are the sole visible person on the webcam. </li>
+				<li> 06. Strictly prohibit the use of any additional devices. </li>
+				<li> 07. Maintain focused attention on the screen; avoid excessive glancing around. </li>
+				<li> 08. The AI Proctor will monitor all activities during the exam. </li>
+				<li> 09. Any form of misconduct may result in disqualification. </li>
+				<li> 10. Understand that your actions during the exam will influence the evaluation of your results. </li>
+				<li> 11. Ensure to select <b> ENTIRE SCREEN </b> mode in screen sharing. </li>
+			</ul>
+			<input type="checkbox" id="instruction-checkbox" onclick="toggleButton();" name="instruction-checkbox" style="margin-left: 160px; display: inline; transform: scale(1.5); margin-right: 5px;">
+			<label for="instruction-checkbox" style="display:inline; margin-top: 0px;"> I have read & understood the instructions </label><br>
+			<button  style="width: 380px;display:none;" disabled id="start-camera" class="btn btn-primary rounded submit start_rec" onclick="startExam();" >I'm ready for the exam</button>				
+		</div>
+	</div>
+</section>
+
+<script> 
+	function toggleButton() {
+        var checkbox = document.getElementById("instruction-checkbox");
+        var button = document.getElementById("start-camera");
+
+        button.disabled = !checkbox.checked;
+    }
+</script>
+
+
+<section id="section2" class="ftco-section">
+	<div class="container">
+		<div class="justify-content-center" style="background-color: white; margin-top: 80px;">
+			<p> Time remaining : <span id="countdown"></span> </p>
+			<div id="question"></div>
+		</div>
+	</div>
+	<div class="ide-editor">
+		<iframe
+		 frameBorder="0"
+		 height="450px"  
+		 src="https://onecompiler.com/embed/python?hideNew=true&disableCopyPaste=true&hideStdin=true&hideTitle=true&hideNewFileOption=true&availableLanguages=c,python,javascript,java,csharp&codeChangeEvent=true" 
+		 width="100%"
+		 id="ide" style="display:none"
+		 ></iframe>
+	</div>
+</section>
+
+
+
+
+
+
+<script>
+	
+
+	document.addEventListener('contextmenu', function(e) {
+    	e.preventDefault();
+	});
+
+
+	document.addEventListener('copy', function(e) {
+	    e.preventDefault();
+	});
+
+	document.addEventListener('cut', function(e) {
+	    e.preventDefault();
+	});
+
+	document.addEventListener('paste', function(e) {
+	    e.preventDefault();
+	});
+
+	let exam_id;
+	let userName = "{{user.username}}";
+	let screenStream;
+	let stream;
+	let currentDate = new Date();
+	let dateString = currentDate.toISOString().slice(0, 19).replace(/-/g, "").replace(/:/g, "").replace("T", "");
+	const combinedString = `${userName}_${dateString}`;
+	console.log(combinedString)
+
+
+
+	let recordedChunks = [];
+	let mediaRecorder;
+	let combinedStream;
+
+
+function startTimer() {
+    var timer2 = "10:00";
+    interval = setInterval(function() {
+        var timer = timer2.split(':');
+        var minutes = parseInt(timer[0], 10);
+        var seconds = parseInt(timer[1], 10);
+        --seconds;
+        minutes = (seconds < 0) ? --minutes : minutes;  
+        seconds = (seconds < 0) ? 59 : seconds;
+        seconds = (seconds < 10) ? '0' + seconds : seconds;
+        $('#countdown').html(minutes + ':' + seconds);
+        timer2 = minutes + ':' + seconds;
+        if ((minutes == 0) && (seconds == 0)) {
+        	clearInterval(interval);
+        	cancelTest();
+			saveLastRecording();      
+    	}
+    }, 1000);
+}
+
+
+function startRecording() {
+    navigator.mediaDevices.getDisplayMedia({ video: true })
+	.then((screenStream) => {
+            if (screenStream.getVideoTracks()[0].getSettings().displaySurface === 'monitor' || screenStream.getVideoTracks()[0].label === 'Primary Monitor') {
+                // If entire screen is selected, proceed with audio capture
+                captureAudio(screenStream);
+            } else {
+                // If entire screen is not selected, show alert and call startRecording recursively
+                alert('Please select entire screen to start the exam.');
+				// stopCapture();
+                startRecording(); // Recursive call
+            }
+        })
+        .catch((error) => {
+            // Handle errors
+            console.error("Error accessing screen:", error);
+            cancelTest();
+        });
+}
+
+// Code to get the summary button & create array for storing answers
+function getSummary(QSize){
+	var container = document.getElementById('questionSummary');
+
+	// Loop through the array and create buttons
+	choosen_options = new Array()
+
+	for (let i=0; i<QSize; i++) {
+		choosen_options.push('0')
+	}
+
+	console.log("After container",choosen_options)
+	for (var i = 0; i < QSize; i++) {
+		var button = document.createElement('button');
+		button.setAttribute('type', 'button');
+		button.setAttribute('name', 'questionBtn');
+		button.setAttribute('class', 'btn rounded-circle btn-sm border-dark questionNumber');
+		button.setAttribute('style', 'width: 30px; height: 30px; padding: 0; color: black; margin: 2px;');
+		button.textContent = i+1;
+		button.setAttribute('id', i);
+		button.addEventListener('click', function() {
+		getQuestion(this.textContent - 1, "next");
+		});
+		container.appendChild(button);
+	}
+}
+
+
+function captureAudio(screenStream) {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((audioStream) => {
+            // Combine screen and audio streams
+            combinedStream = new MediaStream([...screenStream.getTracks(), ...audioStream.getTracks()]);
+
+            // Initialize MediaRecorder with combined stream
+            mediaRecorder = new MediaRecorder(combinedStream);
+			
+            mediaRecorder.ondataavailable = handleDataAvailable;
+
+            // Function to handle recording stop event
+            mediaRecorder.onstop = function() {
+                document.getElementById("overlay").style.display = "none";
+                cancelTest();
+                saveLastRecording();
+            };
+
+			combinedStream.getVideoTracks()[0].onended = function() {
+				cancelTest();
+				saveLastRecording();
+			}
+
+            // Start recording
+            mediaRecorder.start(15000); // Record in 15-second intervals
+        })
+        .catch((audioError) => {
+            console.error("Error accessing audio:", audioError);
+            cancelTest();
+        });
+}
+
+
+
+async function handleDataAvailable(event) {
+  if (event.data.size > 0) {
+    recordedChunks.push(event.data);
+    saveRecording(event.data);
+  }
+}
+
+async function saveRecording(data) {
+	let formData = new FormData();
+	formData.append('recording_chunk', data);
+	formData.append('name', combinedString);
+
+
+	fetch(window.location.origin+'/screen_recorder_app/save_recording/', {
+    	method: 'POST',
+    	body: formData
+  	})
+  	.then(response => response.json())
+  	.then(data => console.log(data))
+  	.catch(error => console.error('Error saving recording:', error));
+  	console.log("hiit hiiiiiiiit");
+}
+
+async function saveLastRecording() {
+  	if (recordedChunks.length > 0) {
+    	let lastChunk = recordedChunks[recordedChunks.length - 1];
+    	saveRecording(lastChunk);
+  	}
+}
+
+
+async function submitTest(){
+	var button = document.querySelector('#submitbtn');
+        if(true) {
+            btnPauseRecording.style.display = 'none';
+            button.disabled = true;
+            button.disableStateWaiting = true;
+            setTimeout(function() {
+                button.disabled = false;
+                button.disableStateWaiting = false;
+            }, 2000);
+
+            button.innerHTML = 'Start Recording';
+
+            function stopStream() {
+                if(button.stream && button.stream.stop) {
+                    button.stream.stop();
+                    button.stream = null;
+                }
+
+                if(button.stream instanceof Array) {
+                    button.stream.forEach(function(stream) {
+                        stream.stop();
+                    });
+                    button.stream = null;
+                }
+
+                videoBitsPerSecond = null;
+                var html = 'Recording status: stopped';
+                html += '<br>Size: ' + bytesToSize(button.recordRTC.getBlob().size);
+                recordingPlayer.parentNode.parentNode.querySelector('h2').innerHTML = html;
+            }
+
+            if(button.recordRTC) {
+				if(button.recordRTC.length) {
+		
+                    button.recordRTC[0].stopRecording(function(url) {
+                        if(!button.recordRTC[1]) {
+                            button.recordingEndedCallback(url);
+                            stopStream();
+
+                            saveToDiskOrOpenNewTab(button.recordRTC[0]);
+                            return;
+                        }
+
+                    	button.recordRTC[1].stopRecording(function(url) {
+                    	    button.recordingEndedCallback(url);
+                    	    stopStream();
+                    	});
+                    });
+                }
+            else {
+                button.recordRTC.stopRecording(function(url) {
+                    if(button.blobs && button.blobs.length) {
+                        var blob = new File(button.blobs, getFileName(fileExtension), {
+                            type: mimeType
+                    	});
+                                    
+                        button.recordRTC.getBlob = function() {
+                            return blob;
+                        };
+
+                        url = URL.createObjectURL(blob);
+                    }
+
+                    if(chkFixSeeking.checked === true) {
+                        // to fix video seeking issues
+                        getSeekableBlob(button.recordRTC.getBlob(), function(seekableBlob) {
+                            button.recordRTC.getBlob = function() {
+                                return seekableBlob;
+                            };
+
+                            url = URL.createObjectURL(seekableBlob);
+
+                            button.recordingEndedCallback(url);
+                            saveToDiskOrOpenNewTab(button.recordRTC);
+                            stopStream();
+                        })
+                        return;
+                    }
+
+                    button.recordingEndedCallback(url);
+                    saveToDiskOrOpenNewTab(button.recordRTC);
+                    stopStream();
+                });
+            }
+            }
+
+            return;
+                }
+            }
+
+	$(document).ready(function () {
+		// authenticateUser()
+		$('#CameraModal').modal({backdrop: 'static', keyboard: false}, 'show');
+		$("#CameraModal").modal('show')
+		$('#CameraModal').on('shown.bs.modal', function () {
+		if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+			navigator.mediaDevices.getUserMedia({ video: true })
+				.then(function (stream) {
+					var video = document.getElementById('cameraFeed');
+					video.srcObject = stream;
+				
+				})
+				.catch(function (error) {
+					console.error('Error accessing webcam: ', error);
+					Notiflix.Notify.failure('Error accessing webcam');
+				});
+		}
+	});	
+});
+
+
+$('#verify_face').click(function () {
+	Notiflix.Loading.standard({
+		svgSize: '50px',
+	});
+
+	Notiflix.Loading.standard('Loading...');
+	var video = document.getElementById('cameraFeed');
+	var canvas1 = document.getElementById('photoCanvas');
+	var photo = document.getElementById('capturedPhoto');
+	canvas1.width = video.videoWidth;
+	canvas1.height = video.videoHeight;
+	canvas1.getContext('2d').drawImage(video, 0, 0, canvas1.width, canvas1.height);
+		
+		
+	
+		console.log(video.videoHeight)
+		var csrfToken = $('[name=csrfmiddlewaretoken]').val();
+		$.ajax({
+			type: 'POST',
+			url: '/face_identify/',  
+			data: {
+				image_data: canvas1.toDataURL('image/png'),
+				csrfmiddlewaretoken: csrfToken,
+			},
+			success: function (response) {
+				
+				console.log(response['message']);
+				if(response['status']){
+					$('#CameraModal').modal('hide');
+					$('.modal-backdrop').hide()
+					$("#start-camera").css("display","block")
+					$('#section1').css("display", "block")		
+				}
+				else{
+					Notiflix.Notify.failure(response['message']);
+				}
+				Notiflix.Loading.remove();
+			},
+			error: function (error) {
+				console.error('Error saving the image:', error);
+			}
+		});
+	});
+
+	
+
+	const videoElement = document.getElementById('camera-feed');
+	const canvas = document.createElement('canvas');
+	const ctx = canvas.getContext('2d');
+
+	const websocket = new WebSocket('ws://localhost:5000/ws/camera/');
+	
+
+	function sendFrame(frameDataUrl) {
+		if (combinedStream && websocket.readyState === WebSocket.OPEN) {
+			websocket.send(JSON.stringify({ frame: frameDataUrl,examid:exam_id, prevResponse: prev_response }));
+		}
+	}
+	
+
+	function captureAndSendFrame() {
+		canvas.width = videoElement.videoWidth;
+		canvas.height = videoElement.videoHeight;
+		ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+		const frameDataUrl = canvas.toDataURL('image/jpeg');
+		sendFrame(frameDataUrl);
+	}
+	
+	
+	websocket.onmessage = async function(event) {
+		Notiflix.Notify.init({
+			position: 'left-top',
+			showOnlyTheLastOne: false,	
+			});
+			
+			const response = JSON.parse(event.data);
+		if(response['status']){
+			if (prev_response != response['status']) {
+				document.getElementById("overlay").style.display = "block";			
+				Notiflix.Notify.failure(response['status'], {
+					closeButton: true,
+					timeout: false,
+					useIcon: false, 
+				});		
+			}
+			prev_response = response['status']
+
+		}
+		else{
+			
+			document.getElementById("overlay").style.display = "none";
+		}
+		console.log('Received response from server:', response, new Date().toLocaleTimeString());
+
+	};
+
+	 async function setupCamera() {
+		const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+		videoElement.srcObject = stream;
+
+		return setInterval(captureAndSendFrame, 1000 / 1); 
+	}
+
+	const startButton = document.getElementById('start-camera');
+	
+	
+
+
+	function getQuestion(index,flag) {
+                $.ajax({
+                    type: 'GET',
+                    url: window.location.origin+'/exams/question', 
+                    data: { index: index },
+                    success: function(response) {
+                        console.log(response)
+						var button_str;
+						question_size = response.size
+						console.log(question_size)
+						if(flag==="next"){
+							button_str = `<div class="form-group">
+							<button type="submit" id="previous" class="btn btn-primary rounded submit start_rec">Previous</button>
+							<button type="submit" id="next" class="btn btn-primary rounded submit start_rec">Save & Next</button>
+						</div>`
+
+						}
+
+						if(index==0){
+							if (needSummary) {
+								getSummary(response.size);
+								$('#buttonContainer').show()
+								needSummary = 0
+							}
+							button_str = `<div class="form-group">
+							<button type="submit" id="next" class="btn btn-primary rounded submit start_rec">Save & Next</button>
+						</div>`
+						}
+
+						if(index+1==response.size)
+						{
+							button_str = `<div class="form-group">
+							<button type="submit" id="previous" class="btn btn-primary rounded submit start_rec">Previous</button>
+							<button type="submit" class="btn btn-primary" id="submit-btn" data-bs-toggle="modal" data-bs-target="#staticBackdrop"> Submit </button>
+						</div>`
+
+						}
+						var qs;
+						if (!(response.options)) {
+							$('iframe').show();
+							qs = `
+								<div id="quescon">
+									<p> Question ${index+1} out of ${response.size} </p>
+									<h3 style="color:#4E5079; ">
+										${response.question_text} 
+									</h3>
+									<input type="checkbox" id="mark_for_review" name="mark_for_review">
+									<label for="mark_for_review"> Mark for review </label>
+								</div>
+								<br>
+								${button_str}
+								`
+						} else {
+							$('iframe').hide();
+							qs = `
+							<div id="quescon">
+							<p> Question ${index+1} out of ${response.size} </p>
+							<h3 style="color:#4E5079; ">
+								${response.question_text} 
+							</h3>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="options" id="option1" value=1>
+								<label class="form-check-label" for="option1">
+									${response.options[0]}
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="options" id="option2" value=2 >
+								<label class="form-check-label" for="option2">
+									${response.options[1]}
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="options" id="option3" value=3>
+								<label class="form-check-label" for="option3">
+									${response.options[2]}
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="options" id="option4" value=4>
+								<label class="form-check-label" for="option4">
+									${response.options[3]}					
+								</label>
+							</div>
+							<input type="checkbox" id="mark_for_review" name="mark_for_review">
+							<label for="mark_for_review"> Mark for review </label>
+							</div>
+							<br>
+							${button_str}
+							
+							`
+						}
+
+
+                        console.log(qs)
+						const question_container = document.getElementById('question');
+						const questionElement = document.createElement('div');
+						questionElement.innerHTML = qs;
+						question_container.innerHTML=""
+						question_container.appendChild(questionElement);
+						aa = `#option${choosen_options[index]}`
+						$(aa).prop("checked", true);
+
+						var htmlCode = $('code').html();
+						var wrappedCode = $('<pre><code>' + htmlCode + '</code><pre>');
+						$('code').replaceWith(wrappedCode);
+						
+
+						if ($(`#${index}`).css("background-color") == 'rgb(0, 128, 0)'){
+							$("#mark_for_review").prop("checked", true);
+						}
+
+						if($("#submit_exam_recoder")){
+							$("#submit_exam_recoder").click(function(){
+								$("#staticBackdrop").modal('hide')
+								const tracks = combinedStream.getTracks();
+								tracks.forEach(track => track.stop());
+								mediaRecorder.stop();		
+							});
+						}
+						if($("#next")){
+							$("#next").click(function(){
+								getQuestion(index+1, "next")
+								var currentSrc = $('#ide').attr('src')
+								$('#ide').attr('src', currentSrc)
+							});
+						}
+
+						if($("#previous")) {
+							$('#previous').click(function(){
+								getQuestion(index-1, "next")
+							})
+						}
+
+						$('input[name="options"]').change(function(){
+        					console.log("JQuery Change Triggered")
+							var answer_key = $('input[name="options"]:checked').val()
+							if (!answer_key) {
+								choosen_options[index] = '0'
+							} else {
+								choosen_options[index] = answer_key
+								if (document.getElementById('mark_for_review').checked){
+									$(`#${index}`).css('background-color', 'green')
+									
+								} else {
+									$(`#${index}`).css('background-color', '#4E5079')
+								}
+								$(`#${index}`).css('color','white')
+								$(`#${index}`).blur()
+							}
+    					});
+
+						$('#submit-btn').click(function(){
+
+							const buttons = document.querySelectorAll('.questionNumber');
+							let answeredQuestion = 0;
+							let reviewededQuestion = 0;
+
+							buttons.forEach(button => {
+    							const buttonStyle = window.getComputedStyle(button);
+    							const backgroundColor = buttonStyle.getPropertyValue('background-color');
+
+    							if (backgroundColor === 'rgb(0, 128, 0)' || backgroundColor === 'green') {
+        							reviewededQuestion++;
+    							} else if (backgroundColor === 'rgb(78, 80, 121)') {
+									answeredQuestion++
+								}
+							});
+
+							$('#tQuestion').html(`${question_size}`)
+							$('#aQuestion').html(`${reviewededQuestion + answeredQuestion}`)
+							$('#rQuestion').html(`${reviewededQuestion}`)
+							$("#staticBackdrop").modal('show')
+						})
+						
+						$('#mark_for_review').change(function(){
+							var answer_key = $('input[name="options"]:checked').val()
+							if (!answer_key) {
+								// choosen_options[index] = '0'
+							} else {
+								choosen_options[index] = answer_key
+								if (document.getElementById('mark_for_review').checked){
+									$(`#${index}`).css('background-color', 'green')
+									
+								} else {
+									$(`#${index}`).css('background-color', '#4E5079')
+								}
+								$(`#${index}`).css('color','white')
+								$(`#${index}`).blur()
+							}
+    					});
+
+						$('.close').click(function(){
+							$("#staticBackdrop").modal('hide')
+						});
+
+						// Code to receive the answered code given in the embeded compiler
+						window.onmessage = function(e){
+							if (e.data && e.data.language) {
+								choosen_options[index] = e.data.files[0].content
+            					console.log(e.data.files[0].content,":::" , index, "Compiler")
+								if (document.getElementById('mark_for_review').checked){
+									$(`#${index}`).css('background-color', 'green')
+									
+								} else {
+									$(`#${index}`).css('background-color', '#4E5079')
+								}
+								$(`#${index}`).css('color','white')
+								$(`#${index}`).blur()
+        					}
+						}
+                    },
+                    error: function(xhr, status, error) {
+                        console.error(xhr.responseText);
+                    }
+                });
+            }
+
+
+	async function startExam() {
+		$.ajax({
+		url: window.location.origin+'/exams/create_exam',
+		method: 'GET',
+		success: function(response) {
+			// Process the data received from the server
+			console.log(response);
+			exam_id = response['exam_id']
+			getQuestion(0, "next");			
+			startTimer();
+		},
+		error: function(xhr, status, error) {
+			// Handle errors that occurred during the request
+			console.error('Error:', error);
+		}
+		});
+
+
+		$("#article_box").css("display","block");
+		$('#section2').css("display", "block");
+		$("#section1").remove()
+		var qs = "gaurav"
+		const question_container = document.getElementById('question');
+
+		
+		intervalId = setupCamera();
+			startRecording();
+			// Display IDE and submit button
+			$("#ide").css("display", "block");
+			$("#submit_exam_recoder").css("display", "block");
+
+
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+			videoElement.srcObject = stream;
+		} catch (error) {
+			console.error('Error accessing the camera:', error);
+		}
+	    
+	}
+	
+	
+	async  function cancelTest() {
+		const question_container = document.getElementById('question');
+		console.log("hit")
+		clearInterval(intervalId);
+		clearInterval(interval)
+		websocket.close();
+
+
+websocket.addEventListener('close', event => {
+	
+	console.log('WebSocket connection closed:', event.code, event.reason);
+
+	$("#submit_exam_recoder").hide();
+	$('.ide-editor').hide();
+
+	$("#submit_exam_recoder").attr("disabled",true)
+	const quescon = document.getElementById('quescon');
+	$("#quescon").html(" ")
+	$('#countdown').closest('p').hide();
+
+	$("#camera-feed").remove()
+	$('#next').hide()
+	$('#buttonContainer').hide()
+	$('#previous').hide();
+	$('#submit-btn').hide();
+	clearTimeout(timeoutId);
+	console.log("Choices:", choosen_options)
+	var csrfToken = $('[name=csrfmiddlewaretoken]').val();
+	$.ajax({
+		type: 'POST',
+		url: window.location.origin + '/exams/check_answer', 
+		headers: {
+			'X-Requested-With': 'XMLHttpRequest'
+		},
+		data: {
+			choosen_option: choosen_options,
+			exam_id:exam_id,
+			csrfmiddlewaretoken: csrfToken,
+		},
+		success: function(response) {
+
+			console.log(response); 
+			tnf = ``
+			for(var i=0;i<response['right_answer'].length;i++)
+			{
+				var rnw;
+				if(response['right_answer'][i]==1){
+					rnw="True"
+				}
+				else{
+					rnw="False"
+
+				}
+				tnf =tnf + `<li class="question">
+                    <p><strong>Question ${i+1}:</strong> ${rnw} </p>
+                </li>` 
+			}
+			let countOfOnes = response['right_answer'].filter(num => num === 1).length;
+
+			let totalElements = response['right_answer'].length;
+			let percentageOfOnes = (countOfOnes / totalElements) * 100;
+			var report = `
+			<div class="report-container">
+        		<h1>Exam Report</h1>
+        		<div class="result-section">
+            		<p>Your Exam Result: <span class="result">${response['percentage_of_ones'].toFixed(2)}%</span></p>
+            		<p>Phone detected: <span class="result">${response['phone_detected']}</span></p>
+            		<p>More than one person detected: <span class="result">${response['more_than_one_person']}</span></p>
+            		<p>No person detected: <span class="result">${response['no_person']}</span></p>
+            		<p>Head left right move: <span class="result">${response['head_left_right']}</span></p>
+    			</div>
+
+			<button type="button" id="" class="btn btn-primary" onclick="window.location.href='{% url 'users:logout' %}'" style="width: 10rem; margin: 10px 0 0 13px">Logout</button>
+			`
+			const quescon = document.getElementById('quescon');
+
+			const reportElement = document.createElement('div');
+			reportElement.innerHTML = report;
+
+			quescon.innerHTML=""
+						
+			quescon.appendChild(reportElement);
+
+
+		},
+		error: function(xhr, errmsg, err) {
+			console.log(xhr.status + ": " + xhr.responseText);
+		}
+	});
+	
+
+
+
+
+});
+
+
+
+}
+
+function stopRecording() {
+  // Stop the media recorder
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  // Call the "thank you" function
+  sayThankYou();
+}
+
+function sayThankYou() {
+  // Your code to display "thank you" message or perform any other action
+  console.log("Thank you for recording!");
+}
+
+</script>
+
+
+
+
+{% endblock %}

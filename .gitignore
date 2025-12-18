@@ -1,0 +1,100 @@
+# Byte-compiled / build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+
+# Pytest
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Django
+staticfiles/
+
+# If you collect static locally, ignore the collected dir (not app static/)
+/staticfiles/
+
+# Editor configs
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+docker-compose.override.yml
+*.env
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*~
+
+# Jupyter
+.ipynb_checkpoints
+
+# Sphinx build
+docs/_build/
+
+# Secrets
+*.pem
+*.key
+
+# Large or model files (optional)
+weights/
+*.tflite
+*.pb
+*.caffemodel
+*.npy
+*.hdf5
+*.h5
+
+# Python packaging
+pip-wheel-metadata/
+*.egg
+*.egg-info/
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Misc
+*.sqlite3
+
+# Ignore compiled assets
+*.pyc
+
+media/
+*.so
+*.task

@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+{% block title %}
+Home
+
+
+{% endblock %}
+{% block body %} 
+<script>
+    {% if messages %}
+    {% for message in messages %}
+
+    Notiflix.Notify.success('Successful','{{message }}');
+      
+    {% endfor %}
+  {% endif %}
+</script>
+
+
+
+  
+  <!-- Modal -->
+  <div class="modal fade" id="CameraModal" tabindex="-1" aria-labelledby="cameraModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="cameraModalLabel">Hello, we need to take a picture</h5>
+          
+
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="container" >
+            <video id="cameraFeed" preload="auto" autoplay style="width: 100%; height: auto;"></video>
+            <canvas id="photoCanvas" style="display: none; "></canvas>
+            <img id="capturedPhoto" style="display: none;margin-bottom:10px;width: 100%; height: auto;">
+          </div>
+          <button type="button" id="retakePicture" style="display: none;" class="btn btn-primary">Retake</button>
+          <button type="button" id="takePicture" class="btn btn-primary">Take my picture</button>
+       
+
+          <button type="button" id="savePicture" style="display: none;" class="btn btn-primary">Save</button>
+          <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+
+        </div>
+      
+
+        
+      </div>
+    </div>
+  </div>
+  <!-- Button trigger modal -->
+
+<br>
+{% if user.is_authenticated%}
+	<div class="container-sm">
+		<div class="row">
+			<div class="col-md-6 mb-5">
+				<h2 class="heading-section">Verify</h2>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-md-6 col-lg-10">
+				<div id="question" class="login-wrap p-4 p-md-5">
+					<h5>Step 1</h5>
+
+                    <h3>Add a picture</h3>
+					
+					<p>We are going to add a photo using your webcam</p>
+                    {% if not verified%}
+		<button id="takemypicbtn" type="button" class="btn btn-primary rounded" data-bs-toggle="modal" data-bs-target="#CameraModal">Take my picture</button>
+                    {% else %}
+		<button type="button" class="btn btn-success rounded" data-bs-toggle="modal" data-bs-target="#CameraModal" disabled>Verified</button>
+
+                    {% endif %}
+
+				</div>
+			</div>
+		</div>
+	</div>
+
+    {% endif %}
+
+
+
+
+    <script>
+        var video = document.getElementById('cameraFeed');
+        var canvas = document.getElementById('photoCanvas');
+        var photo = document.getElementById('capturedPhoto');
+        var save = document.getElementById('savePicture');
+        var retake = document.getElementById('retakePicture');
+        var takePicture = document.getElementById('takePicture');
+
+        
+        $(document).ready(function () {
+            {% if messages %}
+            {% for message in messages %}
+      
+                Notiflix.Report.success('Successful','{{message }}');
+              
+            {% endfor %}
+          {% endif %}
+      
+  
+
+            function dataURLtoBlob(dataURL) {
+                var arr = dataURL.split(',');
+                var mime = arr[0].match(/:(.*?);/)[1];
+                var bstr = atob(arr[1]);
+                var n = bstr.length;
+                var u8arr = new Uint8Array(n);
+                
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+            
+                return new Blob([u8arr], { type: mime });
+            }
+
+            var imageData;
+
+            $('#CameraModal').on('shown.bs.modal', function () {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then(function (stream) {
+                            var video = document.getElementById('cameraFeed');
+                            video.srcObject = stream;
+                        
+                        })
+                        .catch(function (error) {
+                            console.error('Error accessing webcam: ', error);
+                        });
+                }
+            });
+        
+            $('#takePicture').click(function () {
+               
+
+
+        
+         
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                
+          
+                
+                
+                photo.src = canvas.toDataURL('image/png');
+                var csrfToken = $('[name=csrfmiddlewaretoken]').val();
+                var blob = dataURLtoBlob(canvas.toDataURL('image/png'));
+                var formData = new FormData();
+                formData.append("file", blob);
+                $.ajax({    
+                    url: '/validate_image/',  
+                    type: "POST",
+                    data: {
+                        image_data: canvas.toDataURL('image/png'),
+                        csrfmiddlewaretoken: csrfToken,
+                    },
+              
+                    success: function (response) {
+                        console.log(response['message']);
+                        if(!response['message'])
+                        {
+                        video.style.display = 'none';
+                        photo.style.display = 'block';
+                        imageData = canvas.toDataURL('image/png');
+                        takePicture.style.display = 'none';
+                        save.style.display = 'inline';
+                        retake.style.display = 'inline';
+                        }
+                        else{
+                        Notiflix.Notify.failure(response['message']);
+                        
+                        }
+                       
+                        
+                        
+                    },
+                    error: function (error) {
+                        console.error('Error saving the image:', error);
+
+                    }
+                });
+         
+
+
+                
+            });
+
+            $('#savePicture').click(function () {
+                var csrfToken = $('[name=csrfmiddlewaretoken]').val();
+                $.ajax({
+                    type: 'POST',
+                    url: '/save_image/',  
+                    data: {
+                        image_data: imageData,
+                        user:"{{user.id}}",
+                        csrfmiddlewaretoken: csrfToken,
+                    },
+                    success: function (response) {
+                    var takemypicbtn = document.getElementById('takemypicbtn');
+
+                        console.log('Image saved to the server.');
+                        $('#CameraModal').modal('hide');
+                        $('.modal-backdrop').hide()
+                        takemypicbtn.style.display = 'none';
+                        
+                        $("#question").append(`<button type="button" class="btn btn-success rounded" disabled>Verified</button>`)
+                        
+                    },
+                    error: function (error) {
+                        console.error('Error saving the image:', error);
+                    }
+                });
+            });
+            
+            
+          $("#retakePicture").click(function(){
+
+            video.style.display = 'block';
+            photo.style.display = 'none';
+            takePicture.style.display = 'inline';
+            save.style.display = 'none';
+            retake.style.display = 'none';
+            $(".container").css("margin-bottom", "10px");
+
+            
+          })
+
+        
+
+        });
+        
+
+
+            
+       
+
+    </script>
+
+
+{% endblock %}

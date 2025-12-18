@@ -1,0 +1,59 @@
+version: '3'
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: proctoringdb2
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+
+  redis:
+    image: redis:7-alpine
+
+
+
+
+  web:
+    build: .
+    command: bash -c "python manage.py migrate && daphne proctoring.asgi:application -b 0.0.0.0 -p 8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=proctoring.settings
+    volumes:
+      - .:/code
+    ports:
+      - "8000:8000"
+      # - "8081:8081"
+    depends_on:
+      - db
+      - redis
+    # devices:
+    #   - /dev/video0:/dev/video0
+    cap_add:
+      - SYS_RAWIO
+      - SYS_ADMIN
+    entrypoint: ["./entrypoint.sh"] 
+    
+
+
+  web2:
+    build: .
+    command: bash -c "python manage.py migrate && python manage.py runserver 0.0.0.0:5000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=proctoring.settings
+    volumes:
+      - .:/code
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+      - redis
+    # devices:
+    #   - /dev/video0:/dev/video0
+    cap_add:
+      - SYS_RAWIO
+      - SYS_ADMIN
+
+    
+  
+
+  
