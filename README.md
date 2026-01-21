@@ -1,4 +1,3 @@
-**cis-proctoring — Knowledge Transfer (KT)
 
 Overview
 - Purpose: Online proctoring platform combining Django web app, real-time channels, face/eye detection, screen recording and AI modules for exam monitoring.
